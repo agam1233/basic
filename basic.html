@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Balcony</title>
+
   <style>
     * {
       box-sizing: border-box;
@@ -31,6 +32,8 @@
     #play-box {
       display: inline-block;
       cursor: pointer;
+      text-decoration: none;
+      color: #000;
     }
 
     #icon {
@@ -46,16 +49,29 @@
       font-size: 1.3rem;
       margin-top: 6px;
     }
+
+    h1 {
+      margin-top: 20px;
+      font-size: 1.2rem;
+    }
   </style>
 </head>
+
 <body>
-  <div id="header">Welcome to basic test.</div>
+  <div id="header">
+    Welcome to basic test.
+  </div>
+
   <div id="content">
-    <div id="play-box" onclick="">
+    <a id="play-box" href="https://agam1233.github.io/basic/game.html">
       <div id="icon"></div>
       <span id="play-label">PLAY</span>
-      <h1>Currently, playing don't do shit yet. Go to: https://agam1233.github.io/basic/game.html</h1>
-    </div>
+    </a>
+
+    <h1>
+      Currently, playing doesn't do anything yet.<br>
+      Go to: https://agam1233.github.io/basic/game.html
+    </h1>
   </div>
 </body>
-</html
+</html>
