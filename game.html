@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Balcony</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; }
+    canvas { display: block; }
+    #controls {
+      position: fixed;
+      bottom: 12px;
+      left: 12px;
+      color: #fff;
+      font-family: monospace;
+      font-size: 13px;
+      background: rgba(0,0,0,0.4);
+      padding: 8px 12px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+<div id="controls">WASD or arrow keys to move</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.Fog(0x87ceeb, 30, 80);
+
+  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+  camera.position.set(0, 8, 18);
+  camera.lookAt(0, 0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true;
+  document.body.appendChild(renderer.domElement);
+
+  const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+  scene.add(ambient);
+  const sun = new THREE.DirectionalLight(0xfffbe0, 1.0);
+  sun.position.set(10, 20, 10);
+  sun.castShadow = true;
+  scene.add(sun);
+
+  function box(w, h, d, color) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const mat = new THREE.MeshLambertMaterial({ color });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  // Ground
+  const ground = box(24, 0.6, 24, 0x7ec850);
+  ground.position.y = -0.3;
+  scene.add(ground);
+
+  // Tree
+  const trunk = box(1.2, 3.5, 1.2, 0xe07830);
+  trunk.position.set(-4, 1.75, 0);
+  scene.add(trunk);
+  const leaves = box(4.2, 2.2, 4.2, 0x5ab832);
+  leaves.position.set(-4, 4.4, 0);
+  scene.add(leaves);
+
+  // Player group
+  const player = new THREE.Group();
+
+  const head = box(0.9, 0.9, 0.9, 0xf5c78e);
+  head.position.y = 2.35;
+  player.add(head);
+
+  const torso = box(1.0, 1.1, 0.6, 0x4a90d9);
+  torso.position.y = 1.4;
+  player.add(torso);
+
+  const legL = box(0.42, 1.1, 0.5, 0x2c5f8a);
+  legL.position.set(-0.28, 0.3, 0);
+  player.add(legL);
+
+  const legR = box(0.42, 1.1, 0.5, 0x2c5f8a);
+  legR.position.set(0.28, 0.3, 0);
+  player.add(legR);
+
+  player.position.set(2, 0.6, 1);
+  scene.add(player);
+
+  // Input
+  const keys = {};
+  window.addEventListener('keydown', e => keys[e.key] = true);
+  window.addEventListener('keyup',   e => keys[e.key] = false);
+
+  const SPEED = 4;
+  const HALF = 11.7; // platform half-size minus a bit
+  let isMoving = false;
+
+  window.addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+
+    let dx = 0, dz = 0;
+    if (keys['ArrowUp']    || keys['w'] || keys['W']) dz -= 1;
+    if (keys['ArrowDown']  || keys['s'] || keys['S']) dz += 1;
+    if (keys['ArrowLeft']  || keys['a'] || keys['A']) dx -= 1;
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) dx += 1;
+
+    isMoving = dx !== 0 || dz !== 0;
+
+    if (isMoving) {
+      // Normalise diagonal
+      const len = Math.sqrt(dx*dx + dz*dz);
+      dx /= len; dz /= len;
+
+      player.position.x += dx * SPEED * dt;
+      player.position.z += dz * SPEED * dt;
+
+      // Clamp to platform
+      player.position.x = Math.max(-HALF, Math.min(HALF, player.position.x));
+      player.position.z = Math.max(-HALF, Math.min(HALF, player.position.z));
+
+      // Face direction of movement
+      player.rotation.y = Math.atan2(dx, dz);
+
+      // Camera follows
+      camera.position.x += (player.position.x - camera.position.x) * 0.08;
+      camera.position.z += (player.position.z + 18 - camera.position.z) * 0.08;
+      camera.lookAt(player.position.x, 1, player.position.z);
+    }
+
+    // Leg animation
+    const t = clock.getElapsedTime();
+    if (isMoving) {
+      legL.rotation.x = Math.sin(t * 8) * 0.5;
+      legR.rotation.x = -Math.sin(t * 8) * 0.5;
+    } else {
+      legL.rotation.x *= 0.8;
+      legR.rotation.x *= 0.8;
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+</script>
+</body>
+</html>
