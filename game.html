@@ -21,8 +21,9 @@
   </style>
 </head>
 <body>
-<div id="controls">WASD or arrow keys to move</div>
+<div id="controls">WASD / arrows — move &nbsp;|&nbsp; Left drag — orbit &nbsp;|&nbsp; Right drag — pan &nbsp;|&nbsp; Scroll — zoom</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87ceeb);
@@ -35,7 +36,18 @@
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = true;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.outputEncoding = THREE.sRGBEncoding;
   document.body.appendChild(renderer.domElement);
+
+  // Camera controls
+  const orbit = new THREE.OrbitControls(camera, renderer.domElement);
+  orbit.enableDamping = true;
+  orbit.dampingFactor = 0.08;
+  orbit.minDistance = 4;
+  orbit.maxDistance = 60;
+  orbit.maxPolarAngle = Math.PI / 2 - 0.02;
 
   const ambient = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambient);
@@ -66,6 +78,25 @@
   leaves.position.set(-4, 4.4, 0);
   scene.add(leaves);
 
+  // Red PBR sphere
+  const SPHERE_RADIUS = 1.2;
+  const sphereGeo = new THREE.SphereGeometry(SPHERE_RADIUS, 64, 64);
+  const sphereMat = new THREE.MeshStandardMaterial({
+    color: 0xff0000,
+    metalness: 0.0,
+    roughness: 0.5,
+  });
+  const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+  sphere.castShadow = true;
+  sphere.receiveShadow = true;
+  sphere.position.set(4, SPHERE_RADIUS, -3);
+  scene.add(sphere);
+
+  // Sphere velocity (xz only)
+  const sphereVel = new THREE.Vector3(0, 0, 0);
+  const PUSH_FORCE = 6.0;
+  const FRICTION = 0.88;
+
   // Player group
   const player = new THREE.Group();
 
@@ -94,7 +125,8 @@
   window.addEventListener('keyup',   e => keys[e.key] = false);
 
   const SPEED = 4;
-  const HALF = 11.7; // platform half-size minus a bit
+  const HALF = 11.7;
+  const PLAYER_RADIUS = 0.55;
   let isMoving = false;
 
   window.addEventListener('resize', () => {
@@ -107,7 +139,7 @@
 
   function animate() {
     requestAnimationFrame(animate);
-    const dt = clock.getDelta();
+    const dt = Math.min(clock.getDelta(), 0.05); // cap dt
 
     let dx = 0, dz = 0;
     if (keys['ArrowUp']    || keys['w'] || keys['W']) dz -= 1;
@@ -118,25 +150,68 @@
     isMoving = dx !== 0 || dz !== 0;
 
     if (isMoving) {
-      // Normalise diagonal
       const len = Math.sqrt(dx*dx + dz*dz);
       dx /= len; dz /= len;
 
       player.position.x += dx * SPEED * dt;
       player.position.z += dz * SPEED * dt;
 
-      // Clamp to platform
       player.position.x = Math.max(-HALF, Math.min(HALF, player.position.x));
       player.position.z = Math.max(-HALF, Math.min(HALF, player.position.z));
 
-      // Face direction of movement
       player.rotation.y = Math.atan2(dx, dz);
 
-      // Camera follows
-      camera.position.x += (player.position.x - camera.position.x) * 0.08;
-      camera.position.z += (player.position.z + 18 - camera.position.z) * 0.08;
-      camera.lookAt(player.position.x, 1, player.position.z);
+      orbit.target.x += (player.position.x - orbit.target.x) * 0.05;
+      orbit.target.z += (player.position.z - orbit.target.z) * 0.05;
+      orbit.target.y = 1;
     }
+
+    // --- Sphere push physics ---
+    const px = player.position.x;
+    const pz = player.position.z;
+    const sx = sphere.position.x;
+    const sz = sphere.position.z;
+    const toX = sx - px;
+    const toZ = sz - pz;
+    const dist = Math.sqrt(toX * toX + toZ * toZ);
+    const minDist = SPHERE_RADIUS + PLAYER_RADIUS;
+
+    if (dist < minDist && dist > 0.001) {
+      const overlap = minDist - dist;
+      const nx = toX / dist;
+      const nz = toZ / dist;
+
+      // Impulse to sphere
+      sphereVel.x += nx * PUSH_FORCE * overlap;
+      sphereVel.z += nz * PUSH_FORCE * overlap;
+
+      // Push player back so it doesn't clip through
+      player.position.x -= nx * overlap * 0.5;
+      player.position.z -= nz * overlap * 0.5;
+    }
+
+    // Integrate sphere
+    sphere.position.x += sphereVel.x * dt;
+    sphere.position.z += sphereVel.z * dt;
+
+    // Rolling rotation
+    const speed2d = Math.sqrt(sphereVel.x * sphereVel.x + sphereVel.z * sphereVel.z);
+    if (speed2d > 0.001) {
+      const rollAxis = new THREE.Vector3(sphereVel.z, 0, -sphereVel.x).normalize();
+      const rollAngle = (speed2d * dt) / SPHERE_RADIUS;
+      const qDelta = new THREE.Quaternion().setFromAxisAngle(rollAxis, rollAngle);
+      sphere.quaternion.premultiply(qDelta);
+    }
+
+    // Clamp sphere to bounds and bounce off walls
+    if (sphere.position.x < -HALF + SPHERE_RADIUS) { sphere.position.x = -HALF + SPHERE_RADIUS; sphereVel.x *= -0.4; }
+    if (sphere.position.x >  HALF - SPHERE_RADIUS) { sphere.position.x =  HALF - SPHERE_RADIUS; sphereVel.x *= -0.4; }
+    if (sphere.position.z < -HALF + SPHERE_RADIUS) { sphere.position.z = -HALF + SPHERE_RADIUS; sphereVel.z *= -0.4; }
+    if (sphere.position.z >  HALF - SPHERE_RADIUS) { sphere.position.z =  HALF - SPHERE_RADIUS; sphereVel.z *= -0.4; }
+
+    // Friction
+    sphereVel.x *= FRICTION;
+    sphereVel.z *= FRICTION;
 
     // Leg animation
     const t = clock.getElapsedTime();
@@ -148,6 +223,7 @@
       legR.rotation.x *= 0.8;
     }
 
+    orbit.update();
     renderer.render(scene, camera);
   }
   animate();
